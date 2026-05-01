@@ -18,23 +18,44 @@ type Config struct {
 }
 
 func main() {
-	cfg := parseFlags()
+	if len(os.Args) < 2 {
+		printHelp()
+		os.Exit(0)
+	}
 
-	if err := run(cfg); err != nil {
-		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+	switch os.Args[1] {
+	case "get-messages":
+		cfg := parseGetMessagesFlags()
+		if err := run(cfg); err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(1)
+		}
+	default:
+		fmt.Fprintf(os.Stderr, "Unknown command: %q\n\n", os.Args[1])
+		printHelp()
 		os.Exit(1)
 	}
 }
 
-func parseFlags() Config {
+func printHelp() {
+	fmt.Println("discord-retriever - fetch messages from a Discord channel")
+	fmt.Println()
+	fmt.Println("Commands:")
+	fmt.Println("  get-messages    Fetch and save messages from a Discord channel")
+	fmt.Println()
+	fmt.Println("Run 'discord-retriever <command> --help' for command-specific flags.")
+}
+
+func parseGetMessagesFlags() Config {
 	var cfg Config
 
-	flag.StringVar(&cfg.Token, "token", "", "User token (or DISCORD_TOKEN env var)")
-	flag.StringVar(&cfg.Channel, "channel", "", "Channel ID (or DISCORD_CHANNEL_ID env var)")
-	flag.StringVar(&cfg.Output, "output", "./output", "Output directory")
-	flag.BoolVar(&cfg.Verbose, "verbose", false, "Print progress to stderr")
+	cmd := flag.NewFlagSet("get-messages", flag.ExitOnError)
+	cmd.StringVar(&cfg.Token, "token", "", "User token (or DISCORD_TOKEN env var)")
+	cmd.StringVar(&cfg.Channel, "channel", "", "Channel ID (or DISCORD_CHANNEL_ID env var)")
+	cmd.StringVar(&cfg.Output, "output", "./output", "Output directory")
+	cmd.BoolVar(&cfg.Verbose, "verbose", false, "Print progress to stderr")
 
-	flag.Parse()
+	cmd.Parse(os.Args[2:])
 
 	// Environment variable fallback
 	if cfg.Token == "" {
@@ -47,13 +68,13 @@ func parseFlags() Config {
 	// Validate required parameters
 	if cfg.Token == "" {
 		fmt.Fprintln(os.Stderr, "Error: token is required (use --token or DISCORD_TOKEN env var)")
-		flag.Usage()
+		cmd.Usage()
 		os.Exit(1)
 	}
 
 	if cfg.Channel == "" {
 		fmt.Fprintln(os.Stderr, "Error: channel is required (use --channel or DISCORD_CHANNEL_ID env var)")
-		flag.Usage()
+		cmd.Usage()
 		os.Exit(1)
 	}
 
