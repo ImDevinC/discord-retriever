@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"discord-retriever/discord"
-	"discord-retriever/output"
+	"discord-retriever/writer"
 )
 
 type Config struct {
@@ -73,7 +73,7 @@ func run(cfg Config) error {
 
 	// Initialize components
 	client := discord.NewClient(cfg.Token, cfg.Verbose)
-	writer := output.NewWriter(cfg.Output, cfg.Verbose, client)
+	writer := writer.NewWriter(cfg.Output, cfg.Verbose, client)
 
 	if cfg.Verbose {
 		fmt.Fprintf(os.Stderr, "Fetching messages from channel %s...\n", cfg.Channel)
