@@ -7,6 +7,8 @@ import (
 	"time"
 
 	"discord-retriever/discord"
+	"discord-retriever/llm"
+	"discord-retriever/review"
 	"discord-retriever/writer"
 )
 
@@ -30,6 +32,12 @@ func main() {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			os.Exit(1)
 		}
+	case "review":
+		cfg := parseReviewFlags()
+		if err := runReview(cfg); err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(1)
+		}
 	default:
 		fmt.Fprintf(os.Stderr, "Unknown command: %q\n\n", os.Args[1])
 		printHelp()
@@ -42,6 +50,7 @@ func printHelp() {
 	fmt.Println()
 	fmt.Println("Commands:")
 	fmt.Println("  get-messages    Fetch and save messages from a Discord channel")
+	fmt.Println("  review          Extract structured notes from downloaded messages via LLM")
 	fmt.Println()
 	fmt.Println("Run 'discord-retriever <command> --help' for command-specific flags.")
 }
@@ -79,6 +88,55 @@ func parseGetMessagesFlags() Config {
 	}
 
 	return cfg
+}
+
+func parseReviewFlags() review.Config {
+	var cfg review.Config
+
+	cmd := flag.NewFlagSet("review", flag.ExitOnError)
+	apiKey := cmd.String("api-key", "", "LLM API key (or OPENAI_API_KEY env var)")
+	baseURL := cmd.String("base-url", "", "LLM API base URL (or OPENAI_BASE_URL env var)")
+	model := cmd.String("model", "", "LLM model name (or LLM_MODEL env var)")
+	cmd.StringVar(&cfg.InputDir, "input", "./output", "Directory with raw message markdown files")
+	cmd.StringVar(&cfg.NotesDir, "notes", "./notes", "Obsidian vault / notes output directory")
+	cmd.BoolVar(&cfg.Verbose, "verbose", false, "Print progress to stderr")
+
+	cmd.Parse(os.Args[2:])
+
+	// Environment variable fallbacks
+	if *apiKey == "" {
+		*apiKey = os.Getenv("OPENAI_API_KEY")
+	}
+	if *baseURL == "" {
+		*baseURL = os.Getenv("OPENAI_BASE_URL")
+	}
+	if *model == "" {
+		*model = os.Getenv("LLM_MODEL")
+	}
+
+	// Validate required LLM parameters
+	if *apiKey == "" {
+		fmt.Fprintln(os.Stderr, "Error: api-key is required (use --api-key or OPENAI_API_KEY env var)")
+		cmd.Usage()
+		os.Exit(1)
+	}
+	if *baseURL == "" {
+		fmt.Fprintln(os.Stderr, "Error: base-url is required (use --base-url or OPENAI_BASE_URL env var)")
+		cmd.Usage()
+		os.Exit(1)
+	}
+	if *model == "" {
+		fmt.Fprintln(os.Stderr, "Error: model is required (use --model or LLM_MODEL env var)")
+		cmd.Usage()
+		os.Exit(1)
+	}
+
+	cfg.LLM = llm.NewClient(*baseURL, *apiKey, *model)
+	return cfg
+}
+
+func runReview(cfg review.Config) error {
+	return review.Run(cfg)
 }
 
 func run(cfg Config) error {
