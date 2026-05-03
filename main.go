@@ -6,10 +6,10 @@ import (
 	"os"
 	"time"
 
-	"discord-retriever/discord"
-	"discord-retriever/llm"
-	"discord-retriever/review"
-	"discord-retriever/writer"
+	"discord-retriever/internal/discord"
+	"discord-retriever/internal/llm"
+	"discord-retriever/internal/review"
+	"discord-retriever/internal/writer"
 )
 
 type Config struct {

@@ -138,7 +138,7 @@ func TestWriteNewAndAppendUpdate(t *testing.T) {
 	store := NewStore(tmp, false)
 
 	// Write a new note
-	err := store.WriteNew("Charlie", "People", "Charlie is a raccoon.", "2024-09-06", "1281429034735108178", []string{"raccoon", "npc"})
+	err := store.WriteNew("Charlie", "People", "Charlie is a raccoon.", "2024-09-06", "1281429034735108178", []string{"raccoon", "npc"}, "")
 	if err != nil {
 		t.Fatalf("WriteNew failed: %v", err)
 	}
@@ -205,6 +205,105 @@ func TestAllFilesAndTitles(t *testing.T) {
 	}
 	if len(titles) != 3 {
 		t.Errorf("expected 3 titles, got %d", len(titles))
+	}
+}
+
+func TestWriteNewWithDiscordUsername(t *testing.T) {
+	tmp := t.TempDir()
+	store := NewStore(tmp, false)
+
+	err := store.WriteNew("John", "People", "John is a developer.", "2024-09-06", "msg123", []string{"developer"}, "johndoe")
+	if err != nil {
+		t.Fatalf("WriteNew failed: %v", err)
+	}
+
+	path := filepath.Join(tmp, "people", "John.md")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("failed to read written file: %v", err)
+	}
+
+	written := string(data)
+	if !strings.Contains(written, `discord_username: "johndoe"`) {
+		t.Error("missing discord_username frontmatter")
+	}
+}
+
+func TestSetFrontmatterFieldFirstSetWins(t *testing.T) {
+	tmp := t.TempDir()
+	store := NewStore(tmp, false)
+
+	path := filepath.Join(tmp, "people", "Test.md")
+	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+		t.Fatalf("failed to create dir: %v", err)
+	}
+	content := "---\ntitle: \"Test\"\ncategory: People\ntags: [people]\nsource_messages: [\"msg1\"]\nfirst_seen: \"2024-09-06\"\ndiscord_username: \"original\"\n---\n\n# Test\ncontent here\n"
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		t.Fatalf("failed to write test file: %v", err)
+	}
+
+	err := store.SetFrontmatterField(path, "discord_username", "newuser")
+	if err != nil {
+		t.Fatalf("SetFrontmatterField failed: %v", err)
+	}
+
+	data, _ := os.ReadFile(path)
+	written := string(data)
+	if !strings.Contains(written, `discord_username: "original"`) {
+		t.Error("first-set-wins: original value should remain")
+	}
+	if strings.Contains(written, `discord_username: "newuser"`) {
+		t.Error("first-set-wins: new value should not be added")
+	}
+}
+
+func TestSetFrontmatterFieldInsertsWhenMissing(t *testing.T) {
+	tmp := t.TempDir()
+	store := NewStore(tmp, false)
+
+	path := filepath.Join(tmp, "people", "Test.md")
+	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+		t.Fatalf("failed to create dir: %v", err)
+	}
+	content := "---\ntitle: \"Test\"\ncategory: People\ntags: [people]\nsource_messages: [\"msg1\"]\nfirst_seen: \"2024-09-06\"\n---\n\n# Test\ncontent here\n"
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		t.Fatalf("failed to write test file: %v", err)
+	}
+
+	err := store.SetFrontmatterField(path, "discord_username", "newuser")
+	if err != nil {
+		t.Fatalf("SetFrontmatterField failed: %v", err)
+	}
+
+	data, _ := os.ReadFile(path)
+	written := string(data)
+	if !strings.Contains(written, `discord_username: "newuser"`) {
+		t.Error("should have added discord_username")
+	}
+}
+
+func TestSetFrontmatterFieldNoFrontmatter(t *testing.T) {
+	tmp := t.TempDir()
+	store := NewStore(tmp, false)
+
+	path := filepath.Join(tmp, "people", "Test.md")
+	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+		t.Fatalf("failed to create dir: %v", err)
+	}
+	content := "# Test\ncontent here\n"
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		t.Fatalf("failed to write test file: %v", err)
+	}
+
+	err := store.SetFrontmatterField(path, "discord_username", "newuser")
+	if err != nil {
+		t.Fatalf("SetFrontmatterField failed: %v", err)
+	}
+
+	data, _ := os.ReadFile(path)
+	written := string(data)
+	if strings.Contains(written, "discord_username") {
+		t.Error("should not add frontmatter when none exists")
 	}
 }
 

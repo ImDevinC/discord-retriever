@@ -146,8 +146,53 @@ func (s *Store) HasSourceMessage(path, msgID string) bool {
 	return false
 }
 
+// SetFrontmatterField sets a frontmatter field if not already present (first-set-wins).
+// If the field already exists, this is a no-op.
+func (s *Store) SetFrontmatterField(path, key, value string) error {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return err
+	}
+
+	lines := strings.Split(string(data), "\n")
+	inFrontmatter := false
+	frontmatterEnd := -1
+
+	for i, line := range lines {
+		trim := strings.TrimSpace(line)
+		if trim == "---" {
+			if !inFrontmatter {
+				inFrontmatter = true
+				continue
+			}
+			frontmatterEnd = i
+			break
+		}
+		if inFrontmatter && strings.HasPrefix(strings.ToLower(trim), key+":") {
+			return nil
+		}
+	}
+
+	if frontmatterEnd == -1 {
+		return nil
+	}
+
+	var sb strings.Builder
+	for i, line := range lines {
+		sb.WriteString(line)
+		if i < len(lines)-1 {
+			sb.WriteString("\n")
+		}
+		if i == frontmatterEnd-1 {
+			sb.WriteString(fmt.Sprintf("\n%s: \"%s\"", key, value))
+		}
+	}
+
+	return os.WriteFile(path, []byte(sb.String()), 0644)
+}
+
 // WriteNew creates a brand-new note with frontmatter.
-func (s *Store) WriteNew(title, category, content, firstSeen, sourceMsg string, tags []string) error {
+func (s *Store) WriteNew(title, category, content, firstSeen, sourceMsg string, tags []string, discordUsername string) error {
 	if err := s.ensureCategoryDir(category); err != nil {
 		return err
 	}
@@ -178,6 +223,9 @@ func (s *Store) WriteNew(title, category, content, firstSeen, sourceMsg string, 
 	sb.WriteString("source_messages:\n")
 	sb.WriteString(fmt.Sprintf("  - \"%s\"\n", sourceMsg))
 	sb.WriteString(fmt.Sprintf("first_seen: \"%s\"\n", firstSeen))
+	if discordUsername != "" {
+		sb.WriteString(fmt.Sprintf("discord_username: \"%s\"\n", discordUsername))
+	}
 	sb.WriteString("---\n\n")
 	sb.WriteString(fmt.Sprintf("# %s\n\n", title))
 	sb.WriteString(content)
