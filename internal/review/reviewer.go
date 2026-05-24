@@ -121,11 +121,11 @@ func Run(cfg Config) error {
 // ------------------------------------------------------------------
 
 type extractedNote struct {
-	Title    string            `json:"title"`
-	Category string            `json:"category"`
-	Tags     []string          `json:"tags"`
-	Content  string            `json:"content"`
-	Metadata map[string]string `json:"metadata"`
+	Title    string         `json:"title"`
+	Category string         `json:"category"`
+	Tags     []string       `json:"tags"`
+	Content  string         `json:"content"`
+	Metadata map[string]any `json:"metadata"`
 }
 
 func processSourceFile(inputPath string, cfg Config, store *notes.Store, updatedFiles map[string]bool, newOrUpdatedTitles map[string]bool) error {
@@ -209,8 +209,9 @@ Example:
 		jsonStr = llmResponse
 	}
 
+	sanitized := sanitizeJSON(jsonStr)
 	var extractedNotes []extractedNote
-	if err := json.Unmarshal([]byte(jsonStr), &extractedNotes); err != nil {
+	if err := json.Unmarshal([]byte(sanitized), &extractedNotes); err != nil {
 		return fmt.Errorf("failed to parse LLM response: %w\nResponse: %s", err, llmResponse)
 	}
 
@@ -245,10 +246,14 @@ Example:
 			matchPath, found = store.FindMatch(note.Title, category)
 		}
 
-		discordUsername := ""
-		if category == "People" && note.Metadata != nil {
-			discordUsername = note.Metadata["discord_username"]
+	discordUsername := ""
+	if category == "People" && note.Metadata != nil {
+		if v, ok := note.Metadata["discord_username"]; ok {
+			if s, ok := v.(string); ok {
+				discordUsername = s
+			}
 		}
+	}
 
 		if found {
 			if store.HasSourceMessage(matchPath, msgID) {
@@ -299,6 +304,16 @@ func normalizeCategory(cat string) string {
 	default:
 		return ""
 	}
+}
+
+// sanitizeJSON fixes common LLM JSON mistakes before unmarshaling.
+func sanitizeJSON(s string) string {
+	// LLMs often emit Python-style \' escapes; JSON only allows \\ \" \/ \b \f \n \r \t \uXXXX.
+	s = strings.ReplaceAll(s, `\'`, "'")
+	// Strip trailing commas before ] or } — another frequent LLM slip-up.
+	s = regexp.MustCompile(`,\s*\]`).ReplaceAllString(s, `]`)
+	s = regexp.MustCompile(`,\s*\}`).ReplaceAllString(s, `}`)
+	return s
 }
 
 // extractJSON tries to pull a JSON object/array out of a markdown code fence.
