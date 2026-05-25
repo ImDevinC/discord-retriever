@@ -19,6 +19,7 @@ type Config struct {
 	NotesDir string
 	Verbose  bool
 	LLM      *llm.Client
+	Files    []string // if non-empty, only process these filenames
 }
 
 // Run executes the three-pass review pipeline.
@@ -37,9 +38,17 @@ func Run(cfg Config) error {
 		return fmt.Errorf("failed to read input directory: %w", err)
 	}
 
+	filesFilter := make(map[string]bool, len(cfg.Files))
+	for _, f := range cfg.Files {
+		filesFilter[f] = true
+	}
+
 	processedCount := 0
 	for _, entry := range entries {
 		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".md") {
+			continue
+		}
+		if len(filesFilter) > 0 && !filesFilter[entry.Name()] {
 			continue
 		}
 
@@ -174,7 +183,16 @@ Each object must have:
 - category: exactly one of "People", "Places", "Events"
 - tags: array of relevant lowercase tags
 - content: full markdown body (no frontmatter)
-- metadata: optional object with additional info (e.g. {"discord_username": "username"})
+- metadata: optional object with additional info, each value must be a string (e.g. {"discord_username": "username"})
+
+JSON FORMATTING RULES - MUST FOLLOW:
+1. Any double-quote character that appears inside a string value MUST be escaped as \"
+2. Any backslash character that appears inside a string value MUST be escaped as \\
+3. Do NOT use \' (Python-style escape) — JSON only allows \\ \" \/ \b \f \n \r \t \uXXXX
+4. Do NOT include trailing commas before ] or }
+5. All property names and string values must use double quotes, not single quotes
+6. Boolean and numeric values must NOT be quoted
+7. Metadata values must all be strings — do not put arrays, booleans, or nested objects in metadata
 
 Guidelines:
 - For People: try to extract a discord_username from the Author line first, then fall back to @mentions. Include it in the metadata object.
@@ -187,14 +205,14 @@ Example:
     "title": "John Smith",
     "category": "People",
     "tags": ["people", "adventurer", "innkeeper"],
-    "content": "John Smith is the innkeeper at the Hungry Dragon Inn. He is known for offering jobs to adventurers.",
+    "content": "John Smith is the innkeeper at the Hungry Dragon Inn. He is known for offering jobs to adventurers. He said, \"Welcome!\" to the party.",
     "metadata": {"discord_username": "johnsmith"}
   },
   {
     "title": "Battle of Darkwood",
     "category": "Events",
     "tags": ["events", "battle", "war"],
-    "content": "The Battle of Darkwood was fought on March 15th.\\n\\n**Attendees:**\\n- John Smith\\n- Captain Vance\\n- Lady Elara",
+    "content": "The Battle of Darkwood was fought on March 15th.\n\n**Attendees:**\n- John Smith\n- Captain Vance\n- Lady Elara",
     "metadata": {}
   }
 ]`
@@ -308,9 +326,9 @@ func normalizeCategory(cat string) string {
 
 // sanitizeJSON fixes common LLM JSON mistakes before unmarshaling.
 func sanitizeJSON(s string) string {
-	// LLMs often emit Python-style \' escapes; JSON only allows \\ \" \/ \b \f \n \r \t \uXXXX.
+	// LLMs sometimes emit Python-style \' escapes; JSON only allows \\ \" \/ \b \f \n \r \t \uXXXX.
 	s = strings.ReplaceAll(s, `\'`, "'")
-	// Strip trailing commas before ] or } — another frequent LLM slip-up.
+	// Strip trailing commas before ] or } — a frequent LLM slip-up.
 	s = regexp.MustCompile(`,\s*\]`).ReplaceAllString(s, `]`)
 	s = regexp.MustCompile(`,\s*\}`).ReplaceAllString(s, `}`)
 	return s

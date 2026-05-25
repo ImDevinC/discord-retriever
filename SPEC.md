@@ -41,6 +41,7 @@ Flags:
   --model    string   LLM model name (or LLM_MODEL env var)
   --input    string   Directory with raw message markdown files (default: ./output)
   --notes    string   Obsidian vault / notes output directory (default: ./notes)
+  --files    string   Comma-separated filenames to process (omit to process all .md files)
   --verbose           Print progress to stderr
 ```
 

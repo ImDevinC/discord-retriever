@@ -4,6 +4,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"strings"
 	"time"
 
 	"discord-retriever/internal/discord"
@@ -100,6 +101,14 @@ func parseReviewFlags() review.Config {
 	cmd.StringVar(&cfg.InputDir, "input", "./output", "Directory with raw message markdown files")
 	cmd.StringVar(&cfg.NotesDir, "notes", "./notes", "Obsidian vault / notes output directory")
 	cmd.BoolVar(&cfg.Verbose, "verbose", false, "Print progress to stderr")
+	filesOpt := cmd.String("files", "", "Comma-separated filenames to process (omit to process all .md files)")
+
+
+	cmd.Parse(os.Args[2:])
+
+	if *filesOpt != "" {
+		cfg.Files = strings.Split(*filesOpt, ",")
+	}
 
 	cmd.Parse(os.Args[2:])
 
