@@ -32,10 +32,18 @@ type Message struct {
 	Attachments     []Attachment `json:"attachments"`
 	Embeds          []Embed      `json:"embeds"`
 	Reactions       []Reaction   `json:"reactions"`
+	Components      []Component  `json:"components"`
 	ReferencedMessage *Message   `json:"referenced_message"`
 	MessageReference *struct {
 		MessageID string `json:"message_id"`
 	} `json:"message_reference"`
+}
+
+type Component struct {
+	Type       int         `json:"type"`
+	Label      string      `json:"label"`
+	URL        string      `json:"url"`
+	Components []Component `json:"components"`
 }
 
 type User struct {

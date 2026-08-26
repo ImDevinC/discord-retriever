@@ -2,9 +2,10 @@
 
 ## Overview
 
-A Go CLI utility with two commands:
+A Go CLI utility with three commands:
 1. **get-messages** — uses a Discord **user token** (not a bot token) to download all messages and attachments from a single channel. Each message is stored as a unique markdown file named `<messageId>.md`.
 2. **review** — passes downloaded messages through an LLM to extract structured notes (People, Places, Events) into an Obsidian-compatible vault with frontmatter, fuzzy deduplication, and backlink propagation.
+3. **missed** — scans a channel for a user's unclaimed adventure posts and prints those whose in-message date is past a start date.
 
 ---
 
@@ -16,6 +17,7 @@ discord-retriever <command> [flags]
 Commands:
   get-messages    Fetch and save messages from a Discord channel
   review          Extract structured notes from downloaded messages via LLM
+  missed          List unclaimed adventures after a start date from a channel
 ```
 
 ### get-messages
@@ -47,6 +49,39 @@ Flags:
 
 ---
 
+### missed
+
+```
+discord-retriever missed [flags]
+
+Flags:
+  --token      string   User token (or DISCORD_TOKEN env var)
+  --channel    string   Channel ID
+  --start-date string   Start date (YYYY-MM-DD)
+  --user-id    string   User ID to scan messages for
+  --verbose             Print progress to stderr
+```
+
+Scans every message in the channel and keeps those that match all of the following:
+
+- Message author ID equals `--user-id`
+- Content contains the exact markdown `### **GM:** *Waiting for a GM to claim this adventure*`
+- The `<t:<epoch>:F>` timestamp embedded in the message content resolves to a date strictly after `--start-date` and not after the current time
+
+For each match it prints to stdout, one line per match:
+
+```
+<Session Name> <Expected Date> <Link to Sign Up>
+```
+
+- **Session Name** — the text after the leading `# ` heading in the message content
+- **Expected Date** — the `<t:<epoch>:F>` timestamp rendered as `YYYY-MM-DD` (UTC)
+- **Link to Sign Up** — the URL of the button component labeled `View Details & Sign Up`
+
+Messages missing any required piece (no timestamp, no heading, no sign-up button) are silently skipped.
+
+---
+
 ## Project Structure
 
 ```
@@ -57,6 +92,8 @@ discord-retriever/
 ├── internal/
 │   ├── discord/
 │   │   └── client.go       # Discord HTTP client, pagination, rate-limit handling
+│   ├── missed/
+│   │   └── missed.go       # unclaimed-adventure scan + print (missed command)
 │   ├── writer/
 │   │   └── writer.go       # markdown rendering + attachment download
 │   ├── llm/

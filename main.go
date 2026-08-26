@@ -9,6 +9,7 @@ import (
 
 	"discord-retriever/internal/discord"
 	"discord-retriever/internal/llm"
+	"discord-retriever/internal/missed"
 	"discord-retriever/internal/review"
 	"discord-retriever/internal/writer"
 )
@@ -39,6 +40,12 @@ func main() {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			os.Exit(1)
 		}
+	case "missed":
+		cfg := parseMissedFlags()
+		if err := missed.Run(cfg); err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(1)
+		}
 	default:
 		fmt.Fprintf(os.Stderr, "Unknown command: %q\n\n", os.Args[1])
 		printHelp()
@@ -52,6 +59,7 @@ func printHelp() {
 	fmt.Println("Commands:")
 	fmt.Println("  get-messages    Fetch and save messages from a Discord channel")
 	fmt.Println("  review          Extract structured notes from downloaded messages via LLM")
+	fmt.Println("  missed          List unclaimed adventures after a start date from a channel")
 	fmt.Println()
 	fmt.Println("Run 'discord-retriever <command> --help' for command-specific flags.")
 }
@@ -84,6 +92,46 @@ func parseGetMessagesFlags() Config {
 
 	if cfg.Channel == "" {
 		fmt.Fprintln(os.Stderr, "Error: channel is required (use --channel or DISCORD_CHANNEL_ID env var)")
+		cmd.Usage()
+		os.Exit(1)
+	}
+
+	return cfg
+}
+
+func parseMissedFlags() missed.Config {
+	var cfg missed.Config
+
+	cmd := flag.NewFlagSet("missed", flag.ExitOnError)
+	cmd.StringVar(&cfg.Token, "token", "", "User token (or DISCORD_TOKEN env var)")
+	cmd.StringVar(&cfg.Channel, "channel", "", "Channel ID")
+	cmd.StringVar(&cfg.StartDate, "start-date", "", "Start date (YYYY-MM-DD)")
+	cmd.StringVar(&cfg.UserID, "user-id", "", "User ID to scan messages for")
+	cmd.BoolVar(&cfg.Verbose, "verbose", false, "Print progress to stderr")
+
+	cmd.Parse(os.Args[2:])
+
+	if cfg.Token == "" {
+		cfg.Token = os.Getenv("DISCORD_TOKEN")
+	}
+
+	if cfg.Token == "" {
+		fmt.Fprintln(os.Stderr, "Error: token is required (use --token or DISCORD_TOKEN env var)")
+		cmd.Usage()
+		os.Exit(1)
+	}
+	if cfg.Channel == "" {
+		fmt.Fprintln(os.Stderr, "Error: channel is required (use --channel)")
+		cmd.Usage()
+		os.Exit(1)
+	}
+	if cfg.StartDate == "" {
+		fmt.Fprintln(os.Stderr, "Error: start-date is required (use --start-date YYYY-MM-DD)")
+		cmd.Usage()
+		os.Exit(1)
+	}
+	if cfg.UserID == "" {
+		fmt.Fprintln(os.Stderr, "Error: user-id is required (use --user-id)")
 		cmd.Usage()
 		os.Exit(1)
 	}
