@@ -78,7 +78,9 @@ For each match it prints to stdout, one line per match:
 - **Expected Date** — the `<t:<epoch>:F>` timestamp rendered as `YYYY-MM-DD` (UTC)
 - **Link to Sign Up** — the URL of the button component labeled `View Details & Sign Up`
 
-Messages missing any required piece (no timestamp, no heading, no sign-up button) are silently skipped.
+If the session name starts with `[DELETED]` (the bot's marker for a deleted announcement), the message is still tracked without a sign-up button, and the link is rendered as the literal text `DELETED`.
+
+Messages missing any required piece (no timestamp, no heading, no sign-up button for non-deleted sessions) are silently skipped.
 
 ---
 

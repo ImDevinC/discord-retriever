@@ -1,6 +1,8 @@
 package missed
 
 import (
+	"bytes"
+	"strings"
 	"testing"
 	"time"
 
@@ -82,5 +84,106 @@ func TestSignUpLinkMissing(t *testing.T) {
 	}
 	if got := signUpLink(msg); got != "" {
 		t.Fatalf("expected empty link, got %q", got)
+	}
+}
+
+func TestCollectDeletedSession(t *testing.T) {
+	content := `# [DELETED] twins seeking power
+<t:1788048000:F> - <t:1788048000:R>
+### **GM:** *Waiting for a GM to claim this adventure*
+**Players**: 4-6
+**Level Requirement:** 3-7
+**Participants**:
+* Remy LeBeau <@!595828633449398282>`
+	msg := discord.Message{
+		Author:     discord.User{ID: "595828633449398282"},
+		Content:    content,
+		Components: nil,
+	}
+	got := collect([]discord.Message{msg}, "595828633449398282", time.Unix(1788000000, 0).UTC())
+	if len(got) != 1 {
+		t.Fatalf("expected 1 deleted adventure, got %d", len(got))
+	}
+	if got[0].Session != "[DELETED] twins seeking power" {
+		t.Fatalf("expected deleted session name, got %q", got[0].Session)
+	}
+	if got[0].Link != deletedMarker {
+		t.Fatalf("expected link %q, got %q", deletedMarker, got[0].Link)
+	}
+	if !got[0].Date.Equal(time.Unix(1788048000, 0).UTC()) {
+		t.Fatalf("expected date, got %v", got[0].Date)
+	}
+}
+
+func TestCollectNonDeletedMissingButton(t *testing.T) {
+	msg := discord.Message{
+		Author:     discord.User{ID: "595828633449398282"},
+		Content:    sample,
+		Components: nil,
+	}
+	got := collect([]discord.Message{msg}, "595828633449398282", time.Unix(1788000000, 0).UTC())
+	if len(got) != 0 {
+		t.Fatalf("expected non-deleted session without a button to be skipped, got %d", len(got))
+	}
+}
+
+func TestCollectDeletedSessionStillNeedsDateAndHeading(t *testing.T) {
+	msg := discord.Message{
+		Author:     discord.User{ID: "595828633449398282"},
+		Content:    "# [DELETED] twins seeking power\nno timestamp, no marker",
+		Components: nil,
+	}
+	got := collect([]discord.Message{msg}, "595828633449398282", time.Unix(1788000000, 0).UTC())
+	if len(got) != 0 {
+		t.Fatalf("expected deleted session missing required pieces to be skipped, got %d", len(got))
+	}
+}
+
+func TestRenderText(t *testing.T) {
+	adventures := []Adventure{
+		{Session: "New Character Adventure", Date: time.Unix(1788996600, 0).UTC(), Link: "https://example.com/1"},
+		{Session: "Another Session", Date: time.Unix(1789000000, 0).UTC(), Link: "https://example.com/2"},
+	}
+
+	var buf bytes.Buffer
+	if err := render(&buf, adventures, "text"); err != nil {
+		t.Fatalf("render text: %v", err)
+	}
+
+	want := "New Character Adventure 2026-09-09 https://example.com/1\n" +
+		"Another Session 2026-09-10 https://example.com/2\n"
+	if got := buf.String(); got != want {
+		t.Fatalf("expected %q, got %q", want, got)
+	}
+}
+
+func TestRenderCSV(t *testing.T) {
+	adventures := []Adventure{
+		{Session: "New, Character Adventure", Date: time.Unix(1788996600, 0).UTC(), Link: "https://example.com/1"},
+	}
+
+	var buf bytes.Buffer
+	if err := render(&buf, adventures, "csv"); err != nil {
+		t.Fatalf("render csv: %v", err)
+	}
+
+	lines := strings.Split(strings.TrimRight(buf.String(), "\n"), "\n")
+	if len(lines) != 2 {
+		t.Fatalf("expected header + 1 row, got %d lines: %q", len(lines), buf.String())
+	}
+	if lines[0] != "session,date,link" {
+		t.Fatalf("expected header %q, got %q", "session,date,link", lines[0])
+	}
+	// The comma in the session name must be quoted.
+	want := `"New, Character Adventure",2026-09-09,https://example.com/1`
+	if lines[1] != want {
+		t.Fatalf("expected row %q, got %q", want, lines[1])
+	}
+}
+
+func TestRenderUnknownFormat(t *testing.T) {
+	var buf bytes.Buffer
+	if err := render(&buf, nil, "xml"); err == nil {
+		t.Fatal("expected an error for unknown format")
 	}
 }

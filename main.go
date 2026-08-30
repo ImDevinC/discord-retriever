@@ -108,6 +108,7 @@ func parseMissedFlags() missed.Config {
 	cmd.StringVar(&cfg.StartDate, "start-date", "", "Start date (YYYY-MM-DD)")
 	cmd.StringVar(&cfg.UserID, "user-id", "", "User ID to scan messages for")
 	cmd.BoolVar(&cfg.Verbose, "verbose", false, "Print progress to stderr")
+	cmd.StringVar(&cfg.Format, "format", "text", "Output format (text or csv)")
 
 	cmd.Parse(os.Args[2:])
 

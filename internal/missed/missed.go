@@ -1,7 +1,9 @@
 package missed
 
 import (
+	"encoding/csv"
 	"fmt"
+	"io"
 	"os"
 	"regexp"
 	"strconv"
@@ -14,6 +16,7 @@ import (
 const (
 	waitingMarker = "### **GM:** *Waiting for a GM to claim this adventure*"
 	signUpLabel   = "View Details & Sign Up"
+	deletedMarker = "[DELETED]"
 )
 
 var epochRe = regexp.MustCompile(`<t:(\d+):F>`)
@@ -24,6 +27,7 @@ type Config struct {
 	StartDate string
 	UserID    string
 	Verbose   bool
+	Format    string
 }
 
 func Run(cfg Config) error {
@@ -39,9 +43,28 @@ func Run(cfg Config) error {
 		return fmt.Errorf("failed to fetch messages: %w", err)
 	}
 
-	count := 0
+	adventures := collect(messages, cfg.UserID, startDate)
+	if err := render(os.Stdout, adventures, cfg.Format); err != nil {
+		return err
+	}
+
+	if cfg.Verbose {
+		fmt.Fprintf(os.Stderr, "Matched %d missed adventures\n", len(adventures))
+	}
+
+	return nil
+}
+
+type Adventure struct {
+	Session string
+	Date    time.Time
+	Link    string
+}
+
+func collect(messages []discord.Message, userID string, startDate time.Time) []Adventure {
+	var adventures []Adventure
 	for _, msg := range messages {
-		if msg.Author.ID != cfg.UserID {
+		if msg.Author.ID != userID {
 			continue
 		}
 		if !isWaitingAdventure(msg.Content) {
@@ -62,18 +85,40 @@ func Run(cfg Config) error {
 		}
 
 		link := signUpLink(msg)
-		if link == "" {
+		if strings.HasPrefix(session, deletedMarker) {
+			link = deletedMarker
+		} else if link == "" {
 			continue
 		}
 
-		fmt.Printf("%s %s %s\n", session, date.Format("2006-01-02"), link)
-		count++
+		adventures = append(adventures, Adventure{Session: session, Date: date, Link: link})
 	}
+	return adventures
+}
 
-	if cfg.Verbose {
-		fmt.Fprintf(os.Stderr, "Matched %d missed adventures\n", count)
+func render(w io.Writer, adventures []Adventure, format string) error {
+	switch format {
+	case "text":
+		for _, a := range adventures {
+			fmt.Fprintf(w, "%s %s %s\n", a.Session, a.Date.Format("2006-01-02"), a.Link)
+		}
+	case "csv":
+		cw := csv.NewWriter(w)
+		if err := cw.Write([]string{"session", "date", "link"}); err != nil {
+			return err
+		}
+		for _, a := range adventures {
+			if err := cw.Write([]string{a.Session, a.Date.Format("2006-01-02"), a.Link}); err != nil {
+				return err
+			}
+		}
+		cw.Flush()
+		if err := cw.Error(); err != nil {
+			return err
+		}
+	default:
+		return fmt.Errorf("unknown format %q (expected text or csv)", format)
 	}
-
 	return nil
 }
 
