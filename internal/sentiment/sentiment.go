@@ -137,7 +137,7 @@ func insertCharacterFrontmatter(content, character string) string {
 			sb.WriteString("\n")
 		}
 		if i == frontmatterEnd-1 {
-			sb.WriteString(fmt.Sprintf("\ncharacter: \"%s\"", character))
+			sb.WriteString(fmt.Sprintf("\ncharacter: \"%s\"\n", character))
 		}
 	}
 
