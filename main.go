@@ -303,25 +303,72 @@ func run(cfg Config) error {
 	skippedCount := 0
 	writtenCount := 0
 
+	// Group consecutive messages by the same author within 10 minutes
+	group := []discord.Message{}
 	for i := len(messages) - 1; i >= 0; i-- {
 		msg := messages[i]
-		filename := fmt.Sprintf("%s.md", msg.ID)
 
-		// Check if already exists (resume support)
-		if existingFiles[filename] {
-			skippedCount++
+		if len(group) == 0 {
+			group = append(group, msg)
 			continue
 		}
 
-		if err := writer.WriteMessage(msg, cfg.Channel); err != nil {
-			return fmt.Errorf("failed to write message %s: %w", msg.ID, err)
+		lastMsg := group[len(group)-1]
+		sameAuthor := msg.Author.ID == lastMsg.Author.ID
+		withinWindow := false
+		if sameAuthor {
+			t1, err1 := time.Parse(time.RFC3339Nano, msg.Timestamp)
+			t2, err2 := time.Parse(time.RFC3339Nano, lastMsg.Timestamp)
+			if err1 == nil && err2 == nil {
+				withinWindow = t1.Sub(t2) <= 10*time.Minute
+			}
 		}
-		writtenCount++
+
+		if sameAuthor && withinWindow {
+			group = append(group, msg)
+			continue
+		}
+
+		// Flush the completed group
+		if err := flushGroup(group, cfg, writer, existingFiles, &skippedCount, &writtenCount); err != nil {
+			return err
+		}
+		group = []discord.Message{msg}
+	}
+
+	// Flush the last group
+	if err := flushGroup(group, cfg, writer, existingFiles, &skippedCount, &writtenCount); err != nil {
+		return err
 	}
 
 	if cfg.Verbose {
 		fmt.Fprintf(os.Stderr, "Wrote %d new messages, skipped %d existing\n", writtenCount, skippedCount)
 	}
 
+	return nil
+}
+
+func flushGroup(group []discord.Message, cfg Config, w *writer.Writer, existingFiles map[string]bool, skippedCount, writtenCount *int) error {
+	if len(group) == 0 {
+		return nil
+	}
+
+	filename := fmt.Sprintf("%s.md", group[0].ID)
+	if existingFiles[filename] {
+		*skippedCount += len(group)
+		return nil
+	}
+
+	if len(group) == 1 {
+		if err := w.WriteMessage(group[0], cfg.Channel); err != nil {
+			return fmt.Errorf("failed to write message %s: %w", group[0].ID, err)
+		}
+	} else {
+		if err := w.WriteMessageGroup(group, cfg.Channel); err != nil {
+			return fmt.Errorf("failed to write message group starting at %s: %w", group[0].ID, err)
+		}
+	}
+
+	*writtenCount++
 	return nil
 }

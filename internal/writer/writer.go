@@ -23,6 +23,101 @@ func NewWriter(outputDir string, verbose bool, client *discord.Client) *Writer {
 	}
 }
 
+func (w *Writer) WriteMessageGroup(messages []discord.Message, channelID string) error {
+	if len(messages) == 0 {
+		return nil
+	}
+
+	filename := filepath.Join(w.outputDir, fmt.Sprintf("%s.md", messages[0].ID))
+
+	var sb strings.Builder
+
+	// Frontmatter
+	sb.WriteString("---\n")
+	sb.WriteString("message_ids:\n")
+	for _, msg := range messages {
+		sb.WriteString(fmt.Sprintf("  - \"%s\"\n", msg.ID))
+	}
+	sb.WriteString(fmt.Sprintf("author_name: \"%s\"\n", messages[0].Author.Username))
+	sb.WriteString(fmt.Sprintf("author_id: \"%s\"\n", messages[0].Author.ID))
+	sb.WriteString(fmt.Sprintf("first_timestamp: \"%s\"\n", messages[0].Timestamp))
+	sb.WriteString(fmt.Sprintf("last_timestamp: \"%s\"\n", messages[len(messages)-1].Timestamp))
+	sb.WriteString(fmt.Sprintf("message_count: %d\n", len(messages)))
+	sb.WriteString(fmt.Sprintf("channel: \"%s\"\n", channelID))
+	sb.WriteString("---\n\n")
+
+	// Body — each message separated by ---
+	for i, msg := range messages {
+		if i > 0 {
+			sb.WriteString("---\n\n")
+		}
+
+		sb.WriteString(fmt.Sprintf("### %s\n\n", msg.Timestamp))
+
+		if msg.Content != "" {
+			sb.WriteString(msg.Content)
+			sb.WriteString("\n\n")
+		}
+
+		if msg.MessageReference != nil && msg.MessageReference.MessageID != "" {
+			sb.WriteString("**Replying to**: " + msg.MessageReference.MessageID + "\n\n")
+		}
+
+		if len(msg.Reactions) > 0 {
+			sb.WriteString("## Reactions\n")
+			for _, reaction := range msg.Reactions {
+				sb.WriteString(fmt.Sprintf("- %s × %d\n", reaction.Emoji.Name, reaction.Count))
+			}
+			sb.WriteString("\n")
+		}
+
+		if len(msg.Embeds) > 0 {
+			sb.WriteString("## Embeds\n\n")
+			for _, embed := range msg.Embeds {
+				if embed.Title != "" {
+					sb.WriteString(fmt.Sprintf("### %s\n", embed.Title))
+				}
+				if embed.URL != "" {
+					sb.WriteString(fmt.Sprintf("**URL**: %s\n", embed.URL))
+				}
+				if embed.Description != "" {
+					sb.WriteString(fmt.Sprintf("**Description**: %s\n", embed.Description))
+				}
+				if embed.Author != nil && embed.Author.Name != "" {
+					sb.WriteString(fmt.Sprintf("**Author**: %s\n", embed.Author.Name))
+				}
+				if embed.Footer != nil && embed.Footer.Text != "" {
+					sb.WriteString(fmt.Sprintf("**Footer**: %s\n", embed.Footer.Text))
+				}
+				sb.WriteString("\n")
+			}
+		}
+
+		if len(msg.Attachments) > 0 {
+			sb.WriteString("## Attachments\n")
+			for _, attachment := range msg.Attachments {
+				localFilename := fmt.Sprintf("%s_%s", msg.ID, attachment.Filename)
+				localPath := filepath.Join("attachments", localFilename)
+
+				downloaded := w.downloadAttachment(attachment, localFilename)
+
+				if downloaded {
+					sb.WriteString(fmt.Sprintf("- [%s](./%s)\n", attachment.Filename, localPath))
+				} else {
+					sb.WriteString(fmt.Sprintf("- [%s](./%s) (download failed)\n", attachment.Filename, localPath))
+				}
+			}
+			sb.WriteString("\n")
+		}
+	}
+
+	if err := os.WriteFile(filename, []byte(sb.String()), 0644); err != nil {
+		return fmt.Errorf("failed to write file: %w", err)
+	}
+
+	return nil
+}
+
 func (w *Writer) WriteMessage(msg discord.Message, channelID string) error {
 	filename := filepath.Join(w.outputDir, fmt.Sprintf("%s.md", msg.ID))
 
