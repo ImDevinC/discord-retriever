@@ -46,14 +46,8 @@ func (w *Writer) WriteMessageGroup(messages []discord.Message, channelID string)
 	sb.WriteString(fmt.Sprintf("channel: \"%s\"\n", channelID))
 	sb.WriteString("---\n\n")
 
-	// Body — each message separated by ---
-	for i, msg := range messages {
-		if i > 0 {
-			sb.WriteString("---\n\n")
-		}
-
-		sb.WriteString(fmt.Sprintf("### %s\n\n", msg.Timestamp))
-
+	// Body — each message content appended directly
+	for _, msg := range messages {
 		if msg.Content != "" {
 			sb.WriteString(msg.Content)
 			sb.WriteString("\n\n")
