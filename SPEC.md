@@ -2,10 +2,11 @@
 
 ## Overview
 
-A Go CLI utility with three commands:
+A Go CLI utility with four commands:
 1. **get-messages** — uses a Discord **user token** (not a bot token) to download all messages and attachments from a single channel. Each message is stored as a unique markdown file named `<messageId>.md`.
 2. **review** — passes downloaded messages through an LLM to extract structured notes (People, Places, Events) into an Obsidian-compatible vault with frontmatter, fuzzy deduplication, and backlink propagation.
 3. **missed** — scans a channel for a user's unclaimed adventure posts and prints those whose in-message date is past a start date.
+4. **sentiment** — scans markdown files and uses an LLM to identify the in-character journal author for each entry, adding a `character` field to the YAML frontmatter.
 
 ---
 
@@ -18,6 +19,7 @@ Commands:
   get-messages    Fetch and save messages from a Discord channel
   review          Extract structured notes from downloaded messages via LLM
   missed          List unclaimed adventures after a start date from a channel
+  sentiment       Identify character names for journal entries via LLM
 ```
 
 ### get-messages
@@ -103,8 +105,10 @@ discord-retriever/
 │   ├── notes/
 │   │   ├── store.go         # Obsidian vault file management
 │   │   └── store_test.go    # unit tests for matching and frontmatter
-│   └── review/
-│       └── reviewer.go      # three-pass LLM review pipeline
+│   ├── review/
+│   │   └── reviewer.go      # three-pass LLM review pipeline
+│   └── sentiment/
+│       └── sentiment.go     # character-name identification command
 └── output/                  # default get-messages output directory
 ```
 
@@ -115,8 +119,8 @@ discord-retriever/
 ### Discord (get-messages)
 User tokens are sent as a bare `Authorization: <token>` header (no `Bot ` prefix). This matches how the Discord web client authenticates. The tool accepts the token via `--token` flag or `DISCORD_TOKEN` environment variable.
 
-### LLM (review)
-The review command requires an OpenAI-compatible API. Credentials are accepted via flags or environment variables:
+### LLM (review, sentiment)
+The review and sentiment commands require an OpenAI-compatible API. Credentials are accepted via flags or environment variables:
 - `--api-key` / `OPENAI_API_KEY`
 - `--base-url` / `OPENAI_BASE_URL`
 - `--model` / `LLM_MODEL`
@@ -147,12 +151,12 @@ Snowflake IDs are time-ordered, so alphabetical sort of filenames equals chronol
 ### Markdown Format
 
 ```markdown
-# <messageId>
-
-**Author**: username (<userId>)
-**Timestamp**: 2024-01-15T10:30:00Z
-**Channel**: <channelId>
-
+---
+message_id: "<messageId>"
+author_name: "<username>"
+author_id: "<userId>"
+timestamp: "2024-01-15T10:30:00Z"
+channel: "<channelId>"
 ---
 
 <message content>
@@ -276,6 +280,61 @@ Before parsing the LLM response:
 ### Source-Message Deduplication
 
 Each note tracks the Discord message IDs that contributed to it in `source_messages`. When re-processing a message, if the message ID is already present in a matching note's frontmatter, the update is skipped. This makes the review command idempotent and safe to re-run.
+
+---
+
+## sentiment
+
+### Overview
+
+Scans all `.md` files in the input directory and uses an LLM to identify the in-character journal author. Adds a `character` field to each file's YAML frontmatter with the character name. If the `character` field already exists, the file is skipped (idempotent re-run).
+
+### CLI Interface
+
+```
+discord-retriever sentiment [flags]
+
+Flags:
+  --api-key  string   LLM API key (or OPENAI_API_KEY env var)
+  --base-url string   LLM API base URL (or OPENAI_BASE_URL env var)
+  --model    string   LLM model name (or LLM_MODEL env var)
+  --input    string   Directory with raw message markdown files (default: ./output)
+  --files    string   Comma-separated filenames to process (omit to process all .md files)
+  --verbose           Print progress to stderr
+```
+
+### LLM Prompt
+
+The LLM is asked to identify the **in-character** name of the person writing the journal entry — the fictional character, not the Discord username in the author metadata. If the LLM cannot determine a character name, it returns `"Unknown"` and the file is skipped.
+
+### Frontmatter Update
+
+For files without frontmatter (e.g., files created before the writer was updated), the command prepends a new `---` block:
+
+```yaml
+---
+character: "Vuitzilcochtli"
+---
+```
+
+For files that already have frontmatter, it inserts `character:` as the last field before the closing `---`:
+
+```yaml
+---
+message_id: "..."
+author_name: "..."
+timestamp: "..."
+channel: "..."
+character: "Vuitzilcochtli"
+---
+```
+
+### Skipping Logic
+
+- Non-`.md` files and directories are skipped
+- If `--files` is provided, only named files are processed
+- Files whose frontmatter already contains a `character` field are skipped
+- Files where the LLM returns an empty result or `"Unknown"` are skipped (no file modification)
 
 ---
 

@@ -144,24 +144,43 @@ func processSourceFile(inputPath string, cfg Config, store *notes.Store, updated
 	}
 	content := string(data)
 
-	// pull message ID from the first line: "# 1281429034735108178"
 	msgID := ""
+	timestamp := ""
 	lines := strings.Split(content, "\n")
-	if len(lines) > 0 {
+
+	// Try frontmatter-first format
+	if len(lines) > 0 && strings.TrimSpace(lines[0]) == "---" {
+		for i := 1; i < len(lines); i++ {
+			trim := strings.TrimSpace(lines[i])
+			if trim == "---" {
+				break
+			}
+			if strings.HasPrefix(trim, "message_id:") {
+				val := strings.TrimSpace(trim[11:])
+				msgID = strings.Trim(val, `"`)
+			}
+			if strings.HasPrefix(trim, "timestamp:") {
+				val := strings.TrimSpace(trim[10:])
+				timestamp = strings.Trim(val, `"`)
+			}
+		}
+	}
+
+	// Fallback: old inline format
+	if msgID == "" && len(lines) > 0 {
 		firstLine := strings.TrimSpace(lines[0])
 		if strings.HasPrefix(firstLine, "# ") {
 			msgID = strings.TrimPrefix(firstLine, "# ")
 		}
 	}
-
-	// pull timestamp for first_seen date
-	timestamp := ""
-	for _, line := range lines {
-		if strings.Contains(line, "**Timestamp**:") {
-			parts := strings.SplitN(line, ":", 2)
-			if len(parts) == 2 {
-				timestamp = strings.TrimSpace(parts[1])
-				break
+	if timestamp == "" {
+		for _, line := range lines {
+			if strings.Contains(line, "**Timestamp**:") {
+				parts := strings.SplitN(line, ":", 2)
+				if len(parts) == 2 {
+					timestamp = strings.TrimSpace(parts[1])
+					break
+				}
 			}
 		}
 	}

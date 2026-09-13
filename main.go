@@ -11,6 +11,7 @@ import (
 	"discord-retriever/internal/llm"
 	"discord-retriever/internal/missed"
 	"discord-retriever/internal/review"
+	"discord-retriever/internal/sentiment"
 	"discord-retriever/internal/writer"
 )
 
@@ -46,6 +47,12 @@ func main() {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			os.Exit(1)
 		}
+	case "sentiment":
+		cfg := parseSentimentFlags()
+		if err := runSentiment(cfg); err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(1)
+		}
 	default:
 		fmt.Fprintf(os.Stderr, "Unknown command: %q\n\n", os.Args[1])
 		printHelp()
@@ -60,6 +67,7 @@ func printHelp() {
 	fmt.Println("  get-messages    Fetch and save messages from a Discord channel")
 	fmt.Println("  review          Extract structured notes from downloaded messages via LLM")
 	fmt.Println("  missed          List unclaimed adventures after a start date from a channel")
+	fmt.Println("  sentiment       Identify character names for journal entries via LLM")
 	fmt.Println()
 	fmt.Println("Run 'discord-retriever <command> --help' for command-specific flags.")
 }
@@ -195,6 +203,59 @@ func parseReviewFlags() review.Config {
 
 func runReview(cfg review.Config) error {
 	return review.Run(cfg)
+}
+
+func parseSentimentFlags() sentiment.Config {
+	var cfg sentiment.Config
+
+	cmd := flag.NewFlagSet("sentiment", flag.ExitOnError)
+	apiKey := cmd.String("api-key", "", "LLM API key (or OPENAI_API_KEY env var)")
+	baseURL := cmd.String("base-url", "", "LLM API base URL (or OPENAI_BASE_URL env var)")
+	model := cmd.String("model", "", "LLM model name (or LLM_MODEL env var)")
+	cmd.StringVar(&cfg.InputDir, "input", "./output", "Directory with raw message markdown files")
+	cmd.BoolVar(&cfg.Verbose, "verbose", false, "Print progress to stderr")
+	filesOpt := cmd.String("files", "", "Comma-separated filenames to process (omit to process all .md files)")
+
+	cmd.Parse(os.Args[2:])
+
+	if *filesOpt != "" {
+		cfg.Files = strings.Split(*filesOpt, ",")
+	}
+
+	// Environment variable fallbacks
+	if *apiKey == "" {
+		*apiKey = os.Getenv("OPENAI_API_KEY")
+	}
+	if *baseURL == "" {
+		*baseURL = os.Getenv("OPENAI_BASE_URL")
+	}
+	if *model == "" {
+		*model = os.Getenv("LLM_MODEL")
+	}
+
+	// Validate required LLM parameters
+	if *apiKey == "" {
+		fmt.Fprintln(os.Stderr, "Error: api-key is required (use --api-key or OPENAI_API_KEY env var)")
+		cmd.Usage()
+		os.Exit(1)
+	}
+	if *baseURL == "" {
+		fmt.Fprintln(os.Stderr, "Error: base-url is required (use --base-url or OPENAI_BASE_URL env var)")
+		cmd.Usage()
+		os.Exit(1)
+	}
+	if *model == "" {
+		fmt.Fprintln(os.Stderr, "Error: model is required (use --model or LLM_MODEL env var)")
+		cmd.Usage()
+		os.Exit(1)
+	}
+
+	cfg.LLM = llm.NewClient(*baseURL, *apiKey, *model)
+	return cfg
+}
+
+func runSentiment(cfg sentiment.Config) error {
+	return sentiment.Run(cfg)
 }
 
 func run(cfg Config) error {

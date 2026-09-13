@@ -38,14 +38,13 @@ func (w *Writer) WriteMessage(msg discord.Message, channelID string) error {
 func (w *Writer) renderMarkdown(msg discord.Message, channelID string) string {
 	var sb strings.Builder
 
-	// Header
-	sb.WriteString(fmt.Sprintf("# %s\n\n", msg.ID))
-
-	// Metadata
-	sb.WriteString(fmt.Sprintf("**Author**: %s (%s)\n", msg.Author.Username, msg.Author.ID))
-	sb.WriteString(fmt.Sprintf("**Timestamp**: %s\n", msg.Timestamp))
-	sb.WriteString(fmt.Sprintf("**Channel**: %s\n", channelID))
-	sb.WriteString("\n---\n\n")
+	sb.WriteString("---\n")
+	sb.WriteString(fmt.Sprintf("message_id: \"%s\"\n", msg.ID))
+	sb.WriteString(fmt.Sprintf("author_name: \"%s\"\n", msg.Author.Username))
+	sb.WriteString(fmt.Sprintf("author_id: \"%s\"\n", msg.Author.ID))
+	sb.WriteString(fmt.Sprintf("timestamp: \"%s\"\n", msg.Timestamp))
+	sb.WriteString(fmt.Sprintf("channel: \"%s\"\n", channelID))
+	sb.WriteString("---\n\n")
 
 	// Message content
 	if msg.Content != "" {
