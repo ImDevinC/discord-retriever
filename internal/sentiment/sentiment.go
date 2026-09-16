@@ -55,6 +55,14 @@ func Run(cfg Config) error {
 			continue
 		}
 
+		if hasSkipField(content) {
+			if cfg.Verbose {
+				fmt.Fprintf(os.Stderr, "  Skipping %s (skip field exists)\n", entry.Name())
+			}
+			skippedCount++
+			continue
+		}
+
 		if cfg.Verbose {
 			fmt.Fprintf(os.Stderr, "  Processing %s...\n", entry.Name())
 		}
@@ -110,6 +118,25 @@ func hasCharacterField(content string) bool {
 	return false
 }
 
+func hasSkipField(content string) bool {
+	lines := strings.Split(content, "\n")
+	inFrontmatter := false
+	for _, line := range lines {
+		trim := strings.TrimSpace(line)
+		if trim == "---" {
+			if !inFrontmatter {
+				inFrontmatter = true
+				continue
+			}
+			break
+		}
+		if inFrontmatter && strings.HasPrefix(strings.ToLower(trim), "skip:") {
+			return true
+		}
+	}
+	return false
+}
+
 func insertCharacterFrontmatter(content, character string) string {
 	lines := strings.Split(content, "\n")
 	frontmatterEnd := -1
@@ -158,3 +185,4 @@ Return ONLY the character name. If you cannot determine a specific character nam
 
 	return strings.TrimSpace(result), nil
 }
+
